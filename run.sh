@@ -27,6 +27,6 @@ else
 fi
 
 "$PYTHON_BIN" -m pip install --upgrade pip >/dev/null
-"$PYTHON_BIN" -m pip install -r backend/requirements.txt
+"$PYTHON_BIN" -m pip install -r backend/requirements.txt >/dev/null
 
 exec "$PYTHON_BIN" backend/main.py
