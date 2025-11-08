@@ -12,7 +12,7 @@ load_dotenv(env_path)
 
 # Add parent directory to path for database imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'database', 'api'))
-from db import execute, fetch_all
+from db import execute_many
 
 async def categorize_product(runner, product_name):
     """
