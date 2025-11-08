@@ -35,3 +35,6 @@ src/data/categorized_products.json
 # TEST_STATUS.md - useful for tracking
 # TESTING_GUIDE.md - useful for new developers
 # DEPLOYMENT_SUCCESS.md - comprehensive documentation
+
+# ai-agent
+ai-agents-py/
