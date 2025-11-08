@@ -27,16 +27,21 @@ def classify_transaction(transaction: Dict[str, Any]) -> str:
     merchant = transaction.get('merchant', '').lower()
     amount = transaction.get('amount', 0)
     
-    if any(word in merchant for word in ['restaurant', 'cafe', 'coffee', 'food', 'dine', 'starbucks', 'mcdonald', 'burger', 'pizza']):
-        return 'dining'
-    elif any(word in merchant for word in ['grocery', 'supermarket', 'market', 'whole foods', 'trader', 'safeway']):
+    # Check groceries first (before more general food-related terms)
+    if any(word in merchant for word in ['grocery', 'supermarket', 'whole foods', 'trader joe', 'safeway', 'kroger', 'publix']):
         return 'groceries'
-    elif any(word in merchant for word in ['gas', 'fuel', 'shell', 'exxon', 'chevron', 'bp']):
+    # Check dining/restaurants
+    elif any(word in merchant for word in ['restaurant', 'cafe', 'coffee', 'food', 'dine', 'dining', 'starbucks', 'mcdonald', 'burger', 'pizza', 'kitchen', 'grill', 'garden', 'bistro', 'tavern']):
+        return 'dining'
+    # Check transportation
+    elif any(word in merchant for word in ['gas', 'fuel', 'shell', 'exxon', 'chevron', 'bp', 'mobil']):
         return 'transportation'
-    elif any(word in merchant for word in ['amazon', 'store', 'shop', 'target', 'walmart']):
-        return 'shopping'
-    elif any(word in merchant for word in ['netflix', 'spotify', 'subscription', 'hulu', 'disney']):
+    # Check entertainment
+    elif any(word in merchant for word in ['netflix', 'spotify', 'subscription', 'hulu', 'disney', 'prime video', 'apple tv']):
         return 'entertainment'
+    # Check shopping (should be after more specific categories)
+    elif any(word in merchant for word in ['amazon', 'store', 'shop', 'target', 'walmart', 'mall']):
+        return 'shopping'
     else:
         return 'other'
 
