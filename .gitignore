@@ -4,3 +4,5 @@
 .scripts/
 # Ignore environment files in the repo source directories
 src/.env
+.DS_Store
+src/.DS_Store
