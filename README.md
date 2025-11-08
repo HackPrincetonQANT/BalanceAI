@@ -41,6 +41,21 @@ This will:
 3. Retrieve all stored transactions
 4. Generate a prediction for the next purchase
 
+### Run the Example Usage Script
+
+For a more detailed demonstration with comprehensive output:
+
+```bash
+python example_usage.py
+```
+
+This script showcases:
+- All API endpoints with detailed responses
+- Transaction classification examples
+- Error handling
+- Category breakdown and analytics
+- Purchase predictions
+
 ## API Endpoints
 
 ### POST /transaction
