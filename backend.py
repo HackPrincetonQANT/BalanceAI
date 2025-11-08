@@ -159,7 +159,9 @@ def accept_transaction():
         }), 201
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        # Don't expose internal error details to avoid information leakage
+        app.logger.error(f"Error processing transaction: {str(e)}")
+        return jsonify({'error': 'Failed to process transaction'}), 500
 
 
 @app.route('/transactions', methods=['GET'])
@@ -194,4 +196,5 @@ if __name__ == '__main__':
     print("  GET  /predict - Get next purchase prediction")
     print("  GET  /health - Health check")
     print("  POST /reset - Clear all data")
+    print("\n⚠️  WARNING: Running in development mode. Do not use in production!")
     app.run(host='0.0.0.0', port=5000, debug=True)
