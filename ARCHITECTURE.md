@@ -160,10 +160,17 @@
 7. Backend calls database.insert_transaction()
    Stores: transaction + classification + timestamp
    ↓
-8. IF need_or_want == "want":
+8. Smart Notification Filter (reduces friction):
+   Send notification ONLY if ALL criteria met:
+   - need_or_want == "want" (skip essential purchases)
+   - amount >= $5.00 (ignore small transactions)
+   - Not duplicate merchant within last 24h (avoid spam)
+   - User hasn't hit daily notification limit (max 3/day)
+   ↓
+9. IF notification criteria met:
       photon.send_message(user_id, "Was that $5.25 coffee a NEED or WANT?")
    ELSE:
-      Skip notification (essential purchase)
+      Store silently (visible in dashboard only)
 ```
 
 ### Flow 2: User Feedback Loop (with Cheaper Alternatives)
@@ -375,7 +382,56 @@ def generate_prediction(user_id: str, transaction_id: str) -> dict:
     """
 ```
 
-### 6. Photon Module (src/photon.py)
+### 6. Notification Filter Module (src/notification_filter.py) - REDUCES FRICTION
+**Responsibilities:**
+- Smart filtering to prevent notification fatigue
+- Configurable thresholds and rules
+- Track notification frequency per user
+- Determine when to notify vs silent storage
+
+**Public Interface:**
+```python
+def should_notify(
+    user_id: str,
+    transaction: dict,
+    classification: dict
+) -> dict:
+    """
+    Determines if user should be notified about this transaction.
+
+    Returns:
+    {
+        "should_notify": bool,
+        "reason": str,  # "matches_criteria" or "filtered_by_amount" etc.
+        "notification_type": str  # "need_want_check", "alternative_suggestion", etc.
+    }
+
+    Filter criteria (configurable):
+    - Classification is "want" (skip "need")
+    - Amount >= threshold (default $5.00)
+    - Not same merchant within cooldown period (default 24h)
+    - User hasn't exceeded daily limit (default 3 notifications/day)
+    - Optional: First-time merchant (always notify)
+    - Optional: High-confidence classification (confidence > 0.8)
+    """
+
+def get_user_notification_count(user_id: str, hours: int = 24) -> int:
+    """Get number of notifications sent to user in last N hours."""
+
+def update_notification_log(user_id: str, transaction_id: str) -> None:
+    """Log that we sent a notification to this user."""
+```
+
+**Configuration (environment variables):**
+```python
+NOTIFICATION_MIN_AMOUNT = 5.00           # Minimum transaction amount to notify
+NOTIFICATION_DAILY_LIMIT = 3             # Max notifications per day
+NOTIFICATION_MERCHANT_COOLDOWN = 24      # Hours before notifying about same merchant again
+NOTIFICATION_ONLY_WANTS = True           # Only notify for "want" classifications
+NOTIFICATION_MIN_CONFIDENCE = 0.7        # Minimum AI confidence to notify
+```
+
+### 7. Photon Module (src/photon.py)
 **Responsibilities:**
 - Send iMessages via Photon API
 - Handle Photon webhook verification
@@ -881,14 +937,23 @@ GET /user/u_demo/summary?days=30
    - Call DigitalOcean AI or use function calling
    - **Deliverable:** Function that analyzes history and predicts next purchase
 
-5. **Photon Integration** (src/photon.py)
+5. **Notification Filter Module** (src/notification_filter.py) - **REDUCES FRICTION**
+   - Implement `should_notify()` function with configurable rules
+   - Track notification count per user (prevent spam)
+   - Merchant cooldown logic (24h between same merchant)
+   - Daily limit enforcement (max 3/day default)
+   - **Deliverable:** Smart filter that reduces notification fatigue
+   - **Demo value:** Show judges you understand UX
+
+6. **Photon Integration** (src/photon.py)
    - Implement `send_message()` function
    - Implement webhook handler at `POST /api/photon/reply`
    - Parse user replies ("NEED" vs "WANT")
    - **Deliverable:** Working iMessage send/receive
 
-6. **Main Route Updates** (src/main.py)
+7. **Main Route Updates** (src/main.py)
    - Wire classification into `/api/knot/webhooks`
+   - Add notification filter check before sending Photon message
    - Wire alternatives finder into `/api/photon/reply` (only for "WANT" responses)
    - Implement `GET /user/<user_id>/summary`
    - Add error handling and logging
@@ -911,6 +976,13 @@ GET /user/u_demo/summary?days=30
    - `insert_prediction()`
    - `get_predictions(user_id)`
    - `get_user_stats(user_id, days=30)`
+   - `log_notification(user_id, transaction_id, type, sent)` - for notification tracking
+   - `get_recent_notifications(user_id, hours=24)` - for spam prevention
+
+4. **Add NOTIFICATION_LOG table** (for smart filtering)
+   - Track all notification attempts (sent or filtered)
+   - Support querying by user and time range
+   - Used by notification filter module
 
 **Deliverable:** Python module that Flask can import
 
@@ -979,6 +1051,18 @@ CREATE TABLE PREDICTIONS (
     PROBABILITY FLOAT,
     CREATED_AT TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP()
 );
+
+-- Notification log (tracks what we've sent to prevent spam)
+CREATE TABLE NOTIFICATION_LOG (
+    ID VARCHAR PRIMARY KEY,
+    USER_ID VARCHAR NOT NULL,
+    TRANSACTION_ID VARCHAR REFERENCES TRANSACTIONS(ID),
+    NOTIFICATION_TYPE VARCHAR,     -- "need_want_check", "alternative", "prediction"
+    SENT_AT TIMESTAMP_TZ DEFAULT CURRENT_TIMESTAMP(),
+    FILTERED_REASON VARCHAR        -- NULL if sent, otherwise reason for filtering
+);
+
+CREATE INDEX idx_notif_user_sent ON NOTIFICATION_LOG(USER_ID, SENT_AT);
 ```
 
 **SQLite Fallback:** Use `database/snowflake/seed_sqlite.py` for local testing.
@@ -1014,6 +1098,17 @@ SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 # Or use SQLite for local dev
 USE_SQLITE=true
 SQLITE_DB_PATH=./local.db
+
+# Notification Filtering (UX friction reduction)
+NOTIFICATION_MIN_AMOUNT=5.00           # Minimum $ to trigger notification
+NOTIFICATION_DAILY_LIMIT=3             # Max notifications per user per day
+NOTIFICATION_MERCHANT_COOLDOWN=24      # Hours between same merchant notifications
+NOTIFICATION_ONLY_WANTS=true           # Only notify for "want" classifications
+NOTIFICATION_MIN_CONFIDENCE=0.7        # Minimum AI confidence to notify
+
+# Demo Mode (for hackathon presentation)
+DEMO_MODE=false                        # Set to 'true' to disable all filters (show every transaction)
+DEMO_USER_ID=u_demo                    # User ID for live demo
 
 # Server
 FLASK_ENV=development
@@ -1097,6 +1192,11 @@ curl -X POST http://localhost:8000/test/classify \
 - ✅ Photon handles all iMessage communication
 - ✅ **NEW FEATURE:** Alternatives Finder - finds cheaper nearby merchants using MCP
 - ✅ Alternatives trigger on "WANT" user responses only
+- ✅ **HYBRID APPROACH:** Real-time processing + Smart notification filtering
+  - Process ALL transactions in real-time (shows technical capability)
+  - Filter notifications intelligently (shows UX awareness)
+  - Configurable thresholds: min amount ($5), daily limit (3), merchant cooldown (24h)
+  - Silent transactions still appear in dashboard
 - ⏳ Search term preparation logic (TBD - may not be needed if we just use categories)
 
 **Questions to Resolve:**
